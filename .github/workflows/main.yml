@@ -2,48 +2,45 @@ name: Absora Studio Core
 on:
   repository_dispatch:
     types: [launch_studio]
-  workflow_dispatch:
 
 jobs:
   studio-session:
-    runs-on: windows-latest
+    runs-on: windows-latest # This forces a Windows Virtual Environment
     steps:
-      - name: System Optimization & User Setup
+      - name: Configure Windows Environment
         run: |
-          # Set a password for the runneradmin account
+          # Create a secure password for login
           $Password = ConvertTo-SecureString "AbsoraStudio2026!" -AsPlainText -Force
           Set-LocalUser -Name "runneradmin" -Password $Password
           
-          # Performance: Set Power Plan to High Performance
-          powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
-          
-          # Enable RDP and allow WebSocket streaming
+          # Force Windows to accept RDP and WebSockets
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           
-      - name: Mount Absora Storage (win-disk)
+      - name: Link Absora Storage (win-disk)
         run: |
           git config --global user.email "studio@absora.cloud"
           git config --global user.name "AADI-playz23"
           git clone https://${{ secrets.WIN_DISK_TOKEN }}@github.com/AADI-playz23/win-disk.git C:\AbsoraStudio
           
-      - name: Start WebSocket Tunnel & Sync
+      - name: Start Cloudflare Tunnel
         run: |
-          # Fetch Cloudflared
           Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile "cloudflared.exe"
-          
-          # Launch Tunnel (Cloudflare handles the WebSocket conversion)
+          # This connects your VM to the URL in your index.html
           Start-Process ./cloudflared.exe -ArgumentList "tunnel", "--no-autoupdate", "run", "--token", "${{ secrets.CLOUDFLARE_TOKEN }}"
           
-          # The Persistent Sync Loop
-          $sessionEnd = (Get-Date).AddHours(5).AddMinutes(50)
-          Write-Host "Absora Studio is LIVE. Auto-sync active for win-disk."
+      - name: Persistent Desktop Session
+        run: |
+          Write-Host "Absora Studio is LIVE. Windows Desktop is accessible via WebSocket."
+          $sessionLimit = (Get-Date).AddHours(5).AddMinutes(50)
           
-          while ((Get-Date) -lt $sessionEnd) {
-              cd C:\AbsoraStudio
-              if (git status --porcelain) {
+          # Background Loop to keep VM alive and sync files
+          while ((Get-Date) -lt $sessionLimit) {
+              if (Test-Path C:\AbsoraStudio) {
+                  cd C:\AbsoraStudio
                   git add .
-                  git commit -m "Auto-Save: $(Get-Date -Format 'HH:mm')"
+                  git commit -m "Auto-Sync: $(Get-Date -Format 'HH:mm')"
                   git push origin main
               }
               Start-Sleep -Seconds 300
