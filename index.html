@@ -5,49 +5,53 @@
     <style>
         body { background: #0f0f0f; color: #00ffcc; font-family: 'Segoe UI', sans-serif; text-align: center; padding-top: 50px; }
         .card { border: 2px solid #00ffcc; display: inline-block; padding: 30px; border-radius: 15px; box-shadow: 0 0 20px #00ffcc55; }
-        button { background: #00ffcc; color: #000; border: none; padding: 15px 30px; font-weight: bold; cursor: pointer; border-radius: 5px; }
+        button { background: #00ffcc; color: #000; border: none; padding: 15px 30px; font-weight: bold; cursor: pointer; border-radius: 5px; margin-top: 10px; }
         button:hover { background: #fff; box-shadow: 0 0 15px #fff; }
-        #status { margin-top: 20px; color: #888; }
+        #status { margin-top: 20px; color: #888; font-size: 0.9em; }
     </style>
 </head>
 <body>
     <div class="card">
         <h1>Absora Studio V1</h1>
-        <p>Target Environment: Windows Server 2025</p>
-        <p>Storage: win-disk (Repo B)</p>
+        <p>Execution: win | Storage: win-disk</p>
         <button onclick="launchVM()">BOOT ENV</button>
-        <div id="status">System Standby...</div>
+        <div id="status">Ready to Launch</div>
     </div>
 
     <script>
         async function launchVM() {
             const status = document.getElementById('status');
-            status.innerText = "Sending Dispatch Signal...";
+            const TOKEN = prompt("Enter your GitHub PAT (with 'repo' scope):");
+            if(!TOKEN) return;
+
+            status.innerText = "Connecting to GitHub API...";
             
-            // Replace with your GitHub details
-            const USER = 'YOUR_GITHUB_USERNAME';
+            const USER = 'AADI-playz23'; 
             const REPO = 'win';
-            const TOKEN = 'YOUR_FINE_GRAINED_PAT'; 
 
             try {
                 const res = await fetch(`https://api.github.com/repos/${USER}/${REPO}/dispatches`, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${TOKEN}`,
-                        'Accept': 'application/vnd.github.v3+json'
+                        'Authorization': `token ${TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ event_type: 'launch_studio' })
                 });
 
-                if(res.ok) {
-                    status.innerText = "Success! Studio starting. Check GitHub Actions tab.";
+                if(res.status === 204) {
+                    status.innerText = "🚀 Success! Studio is spinning up in GitHub Actions.";
                     status.style.color = "#00ff00";
                 } else {
-                    status.innerText = "Error: Check Console.";
-                    status.style.color = "#ff0000";
+                    const data = await res.json().catch(() => ({ message: "No JSON response" }));
+                    console.log("Error Details:", data);
+                    status.innerText = `Error ${res.status}: ${data.message}`;
+                    status.style.color = "#ff4444";
                 }
             } catch (e) {
-                status.innerText = "Connection Failed.";
+                console.error("Fetch Error:", e);
+                status.innerText = "Connection failed. Check F12 Console.";
             }
         }
     </script>
