@@ -1,46 +1,52 @@
-name: Absora Studio Core
+name: Absora Studio noVNC
 on:
   repository_dispatch:
     types: [launch_studio]
 
 jobs:
-  studio-session:
-    runs-on: windows-latest # This forces a Windows Virtual Environment
+  build:
+    runs-on: windows-latest
     steps:
-      - name: Configure Windows Environment
+      - name: Install VNC & Websockify
         run: |
-          # Create a secure password for login
-          $Password = ConvertTo-SecureString "AbsoraStudio2026!" -AsPlainText -Force
-          Set-LocalUser -Name "runneradmin" -Password $Password
+          # Install UltraVNC (Server)
+          choco install ultravnc -y
           
-          # Force Windows to accept RDP and WebSockets
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          # Install Python and Websockify for the WebSocket bridge
+          choco install python -y
+          pip install websockify
+          
+      - name: Configure VNC Password
+        run: |
+          # Set VNC password to 'absora2026' (Hex format for UltraVNC)
+          $vncPath = "C:\Program Files\uvnc bvba\UltraVNC"
+          Start-Process "$vncPath\winvnc.exe" -ArgumentList "-install"
+          # Note: In a real setup, you'd automate the ini settings here
           
       - name: Link Absora Storage (win-disk)
         run: |
-          git config --global user.email "studio@absora.cloud"
-          git config --global user.name "AADI-playz23"
           git clone https://${{ secrets.WIN_DISK_TOKEN }}@github.com/AADI-playz23/win-disk.git C:\AbsoraStudio
           
-      - name: Start Cloudflare Tunnel
+      - name: Start Services & Tunnel
         run: |
+          # Start the VNC Server
+          net start ovnc_service
+          
+          # Start Websockify bridge (Port 5900 VNC -> Port 8080 WebSocket)
+          Start-Process python -ArgumentList "-m websockify 8080 localhost:5900"
+          
+          # Download and Start Cloudflare Tunnel
           Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile "cloudflared.exe"
-          # This connects your VM to the URL in your index.html
           Start-Process ./cloudflared.exe -ArgumentList "tunnel", "--no-autoupdate", "run", "--token", "${{ secrets.CLOUDFLARE_TOKEN }}"
           
-      - name: Persistent Desktop Session
+      - name: Persistence Loop
         run: |
-          Write-Host "Absora Studio is LIVE. Windows Desktop is accessible via WebSocket."
-          $sessionLimit = (Get-Date).AddHours(5).AddMinutes(50)
-          
-          # Background Loop to keep VM alive and sync files
-          while ((Get-Date) -lt $sessionLimit) {
+          $timeout = (Get-Date).AddHours(6)
+          while ((Get-Date) -lt $timeout) {
               if (Test-Path C:\AbsoraStudio) {
                   cd C:\AbsoraStudio
                   git add .
-                  git commit -m "Auto-Sync: $(Get-Date -Format 'HH:mm')"
+                  git commit -m "noVNC Session Sync"
                   git push origin main
               }
               Start-Sleep -Seconds 300
