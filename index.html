@@ -1,76 +1,71 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Absora Studio | Mission Control</title>
+    <title>Absora Studio | noVNC Mission Control</title>
     <style>
         :root { --neon: #00ffcc; --bg: #0a0a0c; }
-        body { background: var(--bg); color: #fff; font-family: 'Inter', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
-        .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(15px); border: 1px solid rgba(255, 255, 255, 0.1); padding: 40px; border-radius: 24px; width: 420px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.5); position: relative; }
-        h1 { color: var(--neon); font-size: 1.8rem; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 2px; }
-        .status-pill { background: rgba(0, 255, 204, 0.1); color: var(--neon); padding: 5px 15px; border-radius: 20px; font-size: 0.8rem; display: inline-block; margin-bottom: 20px; transition: 0.5s; }
-        .progress-bar { width: 100%; height: 4px; background: #222; border-radius: 2px; margin: 20px 0; display: none; overflow: hidden; }
-        .progress-fill { width: 0%; height: 100%; background: var(--neon); box-shadow: 0 0 10px var(--neon); transition: 1s linear; }
-        button { background: var(--neon); color: #000; border: none; padding: 15px 30px; border-radius: 12px; font-weight: bold; cursor: pointer; width: 100%; transition: 0.3s; font-size: 1rem; }
-        button:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0, 255, 204, 0.4); }
-        #timer { font-size: 0.8rem; color: #888; margin-top: 10px; }
+        body { background: var(--bg); color: #fff; font-family: 'Segoe UI', sans-serif; margin: 0; overflow: hidden; }
+        .sidebar { width: 300px; height: 100vh; background: rgba(255,255,255,0.02); border-right: 1px solid #222; padding: 20px; position: fixed; left: 0; z-index: 10; }
+        .viewport { margin-left: 300px; height: 100vh; background: #000; display: flex; align-items: center; justify-content: center; }
+        iframe { width: 100%; height: 100%; border: none; display: none; }
+        h1 { color: var(--neon); font-size: 1.2rem; text-transform: uppercase; }
+        .btn { background: var(--neon); color: #000; border: none; width: 100%; padding: 12px; font-weight: bold; cursor: pointer; border-radius: 4px; }
+        .status { font-size: 0.8rem; margin-top: 10px; color: #666; }
     </style>
 </head>
 <body>
-    <div class="glass">
+    <div class="sidebar">
         <h1>Absora Studio</h1>
-        <div class="status-pill" id="state">SYSTEM IDLE</div>
-        
-        <div class="progress-bar" id="pBar"><div class="progress-fill" id="pFill"></div></div>
+        <p class="status" id="state">Ready to deploy Windows 10 Env...</p>
+        <button class="btn" id="bootBtn" onclick="launchVM()">BOOT SYSTEM</button>
+        <hr style="border: 0.5px solid #222; margin: 20px 0;">
+        <div style="font-size: 0.7rem; color: #444;">
+            FEATURES:<br>
+            • WebSockets: Enabled<br>
+            • Storage: win-disk<br>
+            • Protocol: noVNC
+        </div>
+    </div>
 
-        <button id="mainBtn" onclick="bootSequence()">INITIALIZE WINDOWS 11 ENV</button>
-        <div id="timer">Waiting for authorization...</div>
+    <div class="viewport" id="view">
+        <div id="loader">Waiting for system boot...</div>
+        <iframe id="vncFrame"></iframe>
     </div>
 
     <script>
-        async function bootSequence() {
-            const btn = document.getElementById('mainBtn');
-            const state = document.getElementById('state');
-            const pBar = document.getElementById('pBar');
-            const pFill = document.getElementById('pFill');
-            const timer = document.getElementById('timer');
-            
-            const TOKEN = prompt("Enter Absora Access Token (GitHub PAT):");
+        async function launchVM() {
+            const TOKEN = prompt("Enter Absora PAT:");
             if(!TOKEN) return;
+            
+            document.getElementById('state').innerText = "Provisioning Runner...";
+            
+            const res = await fetch(`https://api.github.com/repos/AADI-playz23/win/dispatches`, {
+                method: 'POST',
+                headers: { 'Authorization': `token ${TOKEN}`, 'Accept': 'application/vnd.github.v3+json' },
+                body: JSON.stringify({ event_type: 'launch_studio' })
+            });
 
-            // Change these to your actual details
-            const CF_URL = "https://studio.yourdomain.com"; 
-
-            try {
-                const res = await fetch(`https://api.github.com/repos/AADI-playz23/win/dispatches`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `token ${TOKEN}`, 'Accept': 'application/vnd.github.v3+json' },
-                    body: JSON.stringify({ event_type: 'launch_studio' })
-                });
-
-                if(res.status === 204) {
-                    btn.style.display = 'none';
-                    pBar.style.display = 'block';
-                    state.innerText = "PROVISIONING VM...";
-                    state.style.color = "#00ffcc";
-
-                    let seconds = 60;
-                    const interval = setInterval(() => {
-                        seconds--;
-                        let percent = ((60 - seconds) / 60) * 100;
-                        pFill.style.width = percent + "%";
-                        timer.innerText = `Establishing WebSocket connection in ${seconds}s...`;
-
-                        if(seconds <= 0) {
-                            clearInterval(interval);
-                            state.innerText = "REDIRECTING...";
-                            window.location.href = CF_URL;
-                        }
-                    }, 1000);
-                }
-            } catch (e) {
-                alert("Connection Error. Check Console.");
+            if(res.ok) {
+                let count = 90;
+                const timer = setInterval(() => {
+                    count--;
+                    document.getElementById('state').innerText = `Booting Windows (${count}s)...`;
+                    if(count <= 0) {
+                        clearInterval(timer);
+                        showDesktop();
+                    }
+                }, 1000);
             }
+        }
+
+        function showDesktop() {
+            const frame = document.getElementById('vncFrame');
+            const loader = document.getElementById('loader');
+            // This URL should point to your Cloudflare tunnel hostname
+            frame.src = "https://studio.yourdomain.com/vnc.html?autoconnect=true";
+            frame.style.display = "block";
+            loader.style.display = "none";
+            document.getElementById('state').innerText = "SYSTEM ONLINE";
         }
     </script>
 </body>
