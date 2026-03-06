@@ -1,0 +1,41 @@
+name: Absora Studio Runner
+on:
+  repository_dispatch:
+    types: [launch_studio]
+  workflow_dispatch: # Allows manual start from GitHub UI
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Configure Windows & RDP
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+      - name: Link win-disk (Repo B)
+        run: |
+          git config --global user.email "absora-studio@bot.com"
+          git config --global user.name "Absora Bot"
+          git clone https://${{ secrets.WIN_DISK_TOKEN }}@github.com/${{ github.repository_owner }}/win-disk.git C:\AbsoraStudio
+          
+      - name: Start Cloudflare Tunnel & Sync Loop
+        run: |
+          # Download Cloudflared
+          curl -L --output cloudflared.exe https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe
+          
+          # Start Tunnel in background
+          Start-Process ./cloudflared.exe -ArgumentList "tunnel", "--no-autoupdate", "run", "--token", "${{ secrets.CLOUDFLARE_TOKEN }}"
+          
+          # Auto-Sync Loop (Saves every 5 mins)
+          Write-Host "Absora Studio is Live. Syncing to win-disk..."
+          $timeout = New-TimeSpan -Hours 5 -Minutes 50
+          $sw = [diagnostics.stopwatch]::StartNew()
+          
+          while ($sw.Elapsed -lt $timeout) {
+              cd C:\AbsoraStudio
+              git add .
+              git commit -m "Auto-save: $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
+              git push origin main
+              Start-Sleep -Seconds 300
+          }
