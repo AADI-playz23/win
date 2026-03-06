@@ -2,40 +2,39 @@ name: Absora Studio Runner
 on:
   repository_dispatch:
     types: [launch_studio]
-  workflow_dispatch: # Allows manual start from GitHub UI
+  workflow_dispatch:
 
 jobs:
-  build:
+  absora-session:
     runs-on: windows-latest
     steps:
-      - name: Configure Windows & RDP
+      - name: Configure RDP
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           
-      - name: Link win-disk (Repo B)
+      - name: Mount win-disk (Repo B)
         run: |
-          git config --global user.email "absora-studio@bot.com"
-          git config --global user.name "Absora Bot"
-          git clone https://${{ secrets.WIN_DISK_TOKEN }}@github.com/${{ github.repository_owner }}/win-disk.git C:\AbsoraStudio
+          git config --global user.email "aadi-playz@studio.com"
+          git config --global user.name "AADI-playz23"
+          git clone https://${{ secrets.WIN_DISK_TOKEN }}@github.com/AADI-playz23/win-disk.git C:\AbsoraStudio
           
-      - name: Start Cloudflare Tunnel & Sync Loop
+      - name: Launch Tunnel & Sync
         run: |
           # Download Cloudflared
-          curl -L --output cloudflared.exe https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe
+          Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile "cloudflared.exe"
           
-          # Start Tunnel in background
+          # Start Tunnel
           Start-Process ./cloudflared.exe -ArgumentList "tunnel", "--no-autoupdate", "run", "--token", "${{ secrets.CLOUDFLARE_TOKEN }}"
           
-          # Auto-Sync Loop (Saves every 5 mins)
-          Write-Host "Absora Studio is Live. Syncing to win-disk..."
-          $timeout = New-TimeSpan -Hours 5 -Minutes 50
-          $sw = [diagnostics.stopwatch]::StartNew()
-          
-          while ($sw.Elapsed -lt $timeout) {
+          # The Sync Loop (runs for ~6 hours)
+          $end = (Get-Date).AddHours(5).AddMinutes(50)
+          while ((Get-Date) -lt $end) {
               cd C:\AbsoraStudio
-              git add .
-              git commit -m "Auto-save: $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
-              git push origin main
+              if (git status --porcelain) {
+                  git add .
+                  git commit -m "Studio Auto-Save: $(Get-Date -Format 'HH:mm')"
+                  git push origin main
+              }
               Start-Sleep -Seconds 300
           }
