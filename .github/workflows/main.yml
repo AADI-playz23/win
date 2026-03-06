@@ -1,39 +1,49 @@
-name: Absora Studio Runner
+name: Absora Studio Core
 on:
   repository_dispatch:
     types: [launch_studio]
   workflow_dispatch:
 
 jobs:
-  absora-session:
+  studio-session:
     runs-on: windows-latest
     steps:
-      - name: Configure RDP
+      - name: System Optimization & User Setup
         run: |
+          # Set a password for the runneradmin account
+          $Password = ConvertTo-SecureString "AbsoraStudio2026!" -AsPlainText -Force
+          Set-LocalUser -Name "runneradmin" -Password $Password
+          
+          # Performance: Set Power Plan to High Performance
+          powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
+          
+          # Enable RDP and allow WebSocket streaming
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           
-      - name: Mount win-disk (Repo B)
+      - name: Mount Absora Storage (win-disk)
         run: |
-          git config --global user.email "aadi-playz@studio.com"
+          git config --global user.email "studio@absora.cloud"
           git config --global user.name "AADI-playz23"
           git clone https://${{ secrets.WIN_DISK_TOKEN }}@github.com/AADI-playz23/win-disk.git C:\AbsoraStudio
           
-      - name: Launch Tunnel & Sync
+      - name: Start WebSocket Tunnel & Sync
         run: |
-          # Download Cloudflared
+          # Fetch Cloudflared
           Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile "cloudflared.exe"
           
-          # Start Tunnel
+          # Launch Tunnel (Cloudflare handles the WebSocket conversion)
           Start-Process ./cloudflared.exe -ArgumentList "tunnel", "--no-autoupdate", "run", "--token", "${{ secrets.CLOUDFLARE_TOKEN }}"
           
-          # The Sync Loop (runs for ~6 hours)
-          $end = (Get-Date).AddHours(5).AddMinutes(50)
-          while ((Get-Date) -lt $end) {
+          # The Persistent Sync Loop
+          $sessionEnd = (Get-Date).AddHours(5).AddMinutes(50)
+          Write-Host "Absora Studio is LIVE. Auto-sync active for win-disk."
+          
+          while ((Get-Date) -lt $sessionEnd) {
               cd C:\AbsoraStudio
               if (git status --porcelain) {
                   git add .
-                  git commit -m "Studio Auto-Save: $(Get-Date -Format 'HH:mm')"
+                  git commit -m "Auto-Save: $(Get-Date -Format 'HH:mm')"
                   git push origin main
               }
               Start-Sleep -Seconds 300
